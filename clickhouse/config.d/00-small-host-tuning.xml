@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<!--
+  ============================================================================
+  Clickhouse small-host tuning (2026-04-22 v2)
+  ============================================================================
+
+  WHAT CHANGED IN v2 (relative to v1):
+    Added `<merge_tree>` section. Clickhouse's startup sanity check requires
+      number_of_free_entries_in_pool_to_execute_mutation  <  pool_size * ratio
+    Defaults: 20 (free entries) vs 16 × 2 = 32 (total pool) → 20 < 32 ✓ OK.
+    Our override: 20 (default) vs 4 × 1 = 4 (total pool) → 20 ≥ 4 ✗ FAIL.
+    Observed on first-deploy attempt as:
+      "The value of 'number_of_free_entries_in_pool_to_execute_mutation'
+       setting (20) is greater than the value of 'background_pool_size' *
+       'background_merges_mutations_concurrency_ratio' (4)"
+      (BAD_ARGUMENTS — Clickhouse refuses to start)
+
+    Same rule applies to `number_of_free_entries_in_pool_to_lower_max_size_of_merge`
+    (default 8). We pin both to 1 so mutations can always run on our tiny pool.
+
+  WHAT THIS FILE DOES:
+    Overrides Clickhouse defaults that are sized for a production box
+    (32+ cores, 64+ GB dedicated Clickhouse), so they fit our sarvesh-3
+    deployment (8 shared cores, 16 GB mem_limit via compose).
+
+  ROLLBACK: remove the volume mount from docker-compose.override.yml
+  and re-run scripts/install.sh.
+  ============================================================================
+-->
+<clickhouse>
+
+  <!-- ===== Server-level pool sizes ============================== -->
+  <!-- Default 16. Halving to reduce thread-count pressure on 8 cores. -->
+  <background_pool_size>4</background_pool_size>
+  <background_fetches_pool_size>2</background_fetches_pool_size>
+  <background_common_pool_size>2</background_common_pool_size>
+
+  <!-- ===== Memory ================================================ -->
+  <!-- Explicit 90 % of container mem_limit. At 16 GB → ~14.4 GB usable. -->
+  <max_server_memory_usage_to_ram_ratio>0.9</max_server_memory_usage_to_ram_ratio>
+
+  <!-- ===== MergeTree-level settings ============================== -->
+  <!-- These govern how MergeTree tables schedule merges + mutations
+       against the pool declared above. All the sanity-check constraints
+       have to hold:
+          pool_size * ratio  >  max of
+             number_of_free_entries_in_pool_to_execute_mutation,
+             number_of_free_entries_in_pool_to_lower_max_size_of_merge
+       Our pool is 4 × 1 = 4 total. We pin the free-entries settings to 1
+       so the sanity check passes (1 < 4 ✓) and mutations + large-merge
+       schedulability is preserved — just with tighter resource budget. -->
+  <merge_tree>
+    <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
+    <number_of_free_entries_in_pool_to_execute_mutation>1</number_of_free_entries_in_pool_to_execute_mutation>
+    <number_of_free_entries_in_pool_to_lower_max_size_of_merge>1</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+  </merge_tree>
+
+</clickhouse>

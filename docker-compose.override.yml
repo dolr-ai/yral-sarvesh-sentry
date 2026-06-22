@@ -1,0 +1,205 @@
+# =============================================================================
+# yral-sarvesh-sentry — Docker Compose override
+# =============================================================================
+#
+# Docker Compose auto-merges a file named `docker-compose.override.yml` on
+# top of `docker-compose.yml` (they live side-by-side in
+# ~/sentry-upstream/ on sarvesh-3). `scripts/install.sh` symlinks THIS
+# file into that location so our overrides apply without modifying the
+# upstream file (which we'd have to reconcile on every Sentry upgrade).
+#
+# What this file does:
+#   1. Caps RAM for the heaviest services so Sentry can't OOM the
+#      Patroni follower and etcd node sharing this host.
+#
+# What this file deliberately does NOT do:
+#   - Bind nginx to loopback. Upstream already reads `$SENTRY_BIND` from
+#     `.env.custom` (populated by scripts/install.sh) to build the port
+#     spec. We set `SENTRY_BIND=127.0.0.1:9000` there, so the port is
+#     already correct without a Compose-level override.
+#
+# IMPORTANT: every `services:` key below MUST be a REAL service name in
+# upstream's docker-compose.yml at the pinned SENTRY_VERSION. If you add
+# a service name that doesn't exist upstream, Compose creates a new
+# service definition with no image and fails validation ("has neither an
+# image nor a build context specified"). Upstream service names change
+# across versions — example: `worker` and `cron` were renamed to
+# `taskworker` and `taskscheduler` around tag 25. If you bump
+# SENTRY_VERSION, re-check every name here against upstream's
+# docker-compose.yml at the new tag.
+#
+# WHY not write resource limits into the upstream file directly? Upgrade
+# safety. On every `scripts/upgrade.sh`, we bump `SENTRY_VERSION` in
+# project.config, `git checkout <new-tag>` in ~/sentry-upstream, and
+# the upstream docker-compose.yml gets REPLACED. If we'd edited it
+# in-place, our limits would vanish silently. Putting them in an override
+# file kept in OUR repo means upgrades never lose them.
+#
+# Values for memory caps come from project.config — see SENTRY_*_MEM
+# entries there for rationale.
+# =============================================================================
+
+# Compose V2 — no top-level `version:` field.
+
+# --- External networks -------------------------------------------------------
+#
+# sentry-web is a Swarm-wide attachable overlay network, created ONCE by
+# hand on a Swarm manager (sarvesh-1) with:
+#
+#   docker network create --driver overlay --attachable sentry-web
+#
+# Its sole purpose: give the Caddy containers on sarvesh-1 and sarvesh-2 a
+# private network path to Sentry's nginx running on sarvesh-3, without
+# exposing port 9000 on sarvesh-3's public interface.
+#
+# Why "external"? Because `docker network create` happened out-of-band
+# (hand-run on the Swarm manager), not by this compose file. Declaring
+# it external: true tells compose "this already exists, just attach the
+# services to it; don't try to create or delete it."
+#
+# IMPORTANT: if you ever tear down the Swarm or replace the network,
+# re-run the `docker network create ... sentry-web` command on the
+# manager before running scripts/install.sh again.
+networks:
+  sentry-web:
+    external: true
+    name: sentry-web
+
+services:
+
+  # --------------------------------------------------------------------------
+  # nginx — Sentry's public-facing entry point
+  # --------------------------------------------------------------------------
+  # We attach it to BOTH its compose-internal network (default) AND the
+  # sentry-web Swarm overlay. Upstream's service definition puts it on
+  # the default internal network so all the other Sentry services can
+  # talk to it; we add sentry-web on top so Caddy can reach it by DNS
+  # name (`sentry-self-hosted-nginx-1:80`) across hosts.
+  #
+  # The host-port mapping remains 127.0.0.1:9000 (via SENTRY_BIND in
+  # .env.custom) as a secondary reach-path for ad-hoc debugging on
+  # sarvesh-3. The primary traffic path is now Caddy → sentry-web
+  # overlay → nginx container.
+  nginx:
+    networks:
+      # "default" here means: keep the default network compose would
+      # have attached. Without this line, declaring the second network
+      # below would IMPLICITLY drop the default. Being explicit is
+      # safer than relying on the implicit default-preservation rules.
+      - default
+      - sentry-web
+
+  # --------------------------------------------------------------------------
+  # web — the Django app (Sentry UI + /api endpoints)
+  # --------------------------------------------------------------------------
+  web:
+    mem_limit: 2g
+    mem_reservation: 512m
+    # WHY we set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET explicitly here:
+    # Upstream's `x-sentry-defaults` environment section lists bare
+    # `SENTRY_SYSTEM_SECRET_KEY:` (and a handful of other vars) but does
+    # NOT list Google OAuth vars — upstream has no way to know about our
+    # custom config.yml references to $GOOGLE_CLIENT_ID. Without these
+    # explicit entries, even though .env.custom contains real values and
+    # even though our shell has them exported, Compose does not propagate
+    # them to the web container. Sentry's config.yml loader then sees
+    # empty strings and SSO is silently broken.
+    #
+    # Using the `${VAR}` interpolation form (not the bare form) because
+    # it picks up values from --env-file .env.custom deterministically,
+    # regardless of whether the shell that invoked `docker compose`
+    # happens to have them exported.
+    environment:
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+
+  # --------------------------------------------------------------------------
+  # taskworker — async task execution (replaces the old `worker` service
+  # from tag < 25; post-ingest processing like issue grouping, alert
+  # evaluation, integration webhooks)
+  # --------------------------------------------------------------------------
+  taskworker:
+    mem_limit: 3g
+    mem_reservation: 512m
+
+  # --------------------------------------------------------------------------
+  # taskscheduler — periodic job trigger (replaces the old `cron` service;
+  # fires digest emails, retention cleanups, etc.)
+  # --------------------------------------------------------------------------
+  taskscheduler:
+    mem_limit: 512m
+
+  # --------------------------------------------------------------------------
+  # taskbroker — message bus for tasks (pairs with taskworker)
+  # --------------------------------------------------------------------------
+  taskbroker:
+    mem_limit: 512m
+
+  # --------------------------------------------------------------------------
+  # relay — event ingestion gateway; first stop for every incoming event
+  # --------------------------------------------------------------------------
+  relay:
+    mem_limit: 512m
+
+  # --------------------------------------------------------------------------
+  # snuba-api — query layer in front of Clickhouse (all issue searches,
+  # trends, performance UI hit here)
+  # --------------------------------------------------------------------------
+  snuba-api:
+    mem_limit: 4g
+    mem_reservation: 1g
+
+  # --------------------------------------------------------------------------
+  # clickhouse — time-series storage for events + traces
+  # --------------------------------------------------------------------------
+  # mem_limit bumped 4g → 16g on 2026-04-22. sarvesh-3 has ~60 GB total RAM
+  # and is only lightly used for non-Sentry work (3 etcd + 3 Patroni
+  # followers, < 500 MB each); giving Clickhouse a comfortable 16 GB
+  # eliminates the "MEMORY_LIMIT_EXCEEDED at 1.2 GiB" errors we saw
+  # pre-tuning and gives merges room to run without spilling.
+  #
+  # The config.d/ volume mount below ships our small-host tuning
+  # (background_pool_size=4, mem ratio=0.9). Without it, Clickhouse
+  # ships with production-scale defaults (32 concurrent merges) that
+  # saturate sarvesh-3's 8 cores.
+  clickhouse:
+    mem_limit: 16g
+    mem_reservation: 4g
+    # NOTE 2026-04-22: a Clickhouse config.d override was tried here and
+    # reverted. It caused Clickhouse's startup sanity check to fail:
+    #   "number_of_free_entries_in_pool_to_execute_mutation (20)
+    #    greater than background_pool_size * ratio (4)"
+    # Root cause: that setting's default is defined in users.xml for the
+    # default profile — a config.d/merge_tree override doesn't apply to
+    # it. The correct fix is a users.d/ drop-in with a <profiles><default>
+    # block. Deferred out of this commit to get Sentry back up. See
+    # clickhouse/config.d/00-small-host-tuning.xml for the intended
+    # server-side settings; they'll be re-enabled once the users.d/
+    # companion is written and the symlink wiring is updated accordingly.
+
+  # --------------------------------------------------------------------------
+  # kafka — event queue between relay and consumers
+  # --------------------------------------------------------------------------
+  kafka:
+    mem_limit: 2g
+    mem_reservation: 512m
+
+  # --------------------------------------------------------------------------
+  # postgres — Sentry's OWN Postgres (NOT our Patroni cluster). Stores
+  # issue metadata, project config, user accounts.
+  # --------------------------------------------------------------------------
+  postgres:
+    mem_limit: 2g
+    mem_reservation: 512m
+
+  # --------------------------------------------------------------------------
+  # redis — cache + rate-limiter state
+  # --------------------------------------------------------------------------
+  redis:
+    mem_limit: 512m
+
+# We intentionally don't cap every single service — only the load-bearing
+# ones. Upstream adds many "consumer" services (snuba-*-consumer, ingest-*,
+# subscription-consumer-*, post-process-forwarder-*) and chasing each would
+# mean maintenance pain on every release. They're small processes and share
+# the uncapped remainder.

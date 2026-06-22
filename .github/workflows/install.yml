@@ -1,0 +1,51 @@
+name: Install or upgrade Sentry
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-sarvesh-sentry-role
+          jwtGithubAudience: https://github.com/dolr-ai
+          secrets: |
+            secret/data/yral-sarvesh-sentry/GOOGLE_CLIENT_ID value | GOOGLE_CLIENT_ID ;
+            secret/data/yral-sarvesh-sentry/GOOGLE_CLIENT_SECRET value | GOOGLE_CLIENT_SECRET ;
+            secret/data/yral-sarvesh-sentry/MACHINE_ACCESS_PRIVATE_KEY value | MACHINE_ACCESS_PRIVATE_KEY ;
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ env.MACHINE_ACCESS_PRIVATE_KEY }}
+      - name: Trust fleet hosts
+        run: ssh-keyscan -H 88.99.58.111 136.243.153.19 138.201.57.116 >> ~/.ssh/known_hosts
+      - name: Copy configuration to sarvesh-3
+        run: |
+          ssh deploy@138.201.57.116 'mkdir -p /home/deploy/yral-sarvesh-sentry'
+          rsync -az --delete --exclude .git ./ deploy@138.201.57.116:/home/deploy/yral-sarvesh-sentry/
+      - name: Create private Sentry overlay
+        run: |
+          ssh deploy@88.99.58.111 "docker network inspect sentry-web >/dev/null 2>&1 || docker network create --driver overlay --opt encrypted=true --attachable sentry-web"
+      - name: Install Sentry on sarvesh-3
+        env:
+          GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
+        run: |
+          ssh deploy@138.201.57.116 "cd /home/deploy/yral-sarvesh-sentry && GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}' bash scripts/install.sh"
+      - name: Install persistent Caddy route on every origin
+        run: |
+          for host in 88.99.58.111 136.243.153.19 138.201.57.116; do
+            scp caddy/sentry.caddy deploy@$host:/home/deploy/caddy/conf.d/yral-sarvesh-sentry.caddy
+            ssh deploy@$host "grep -qxF sentry-web /home/deploy/caddy/.overlays-list || echo sentry-web >> /home/deploy/caddy/.overlays-list; /home/deploy/caddy/render-caddy-compose.sh; docker exec caddy caddy validate --config /etc/caddy/Caddyfile; docker exec caddy caddy reload --config /etc/caddy/Caddyfile --force"
+          done
+      - name: Verify public health
+        run: curl --fail --retry 12 --retry-delay 10 https://sentry.sarvesh.yral.com/_health/
