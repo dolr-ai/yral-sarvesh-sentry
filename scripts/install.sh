@@ -38,6 +38,7 @@ GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 EOF
 
 python3 - <<'PY'
+import os
 from pathlib import Path
 
 config = Path("sentry/config.yml")
@@ -55,8 +56,8 @@ for line in text.splitlines():
 lines.extend([
     "",
     "system.url-prefix: 'https://sentry.sarvesh.yral.com'",
-    "auth-google.client-id: '$GOOGLE_CLIENT_ID'",
-    "auth-google.client-secret: '$GOOGLE_CLIENT_SECRET'",
+    f"auth-google.client-id: '{os.environ['GOOGLE_CLIENT_ID']}'",
+    f"auth-google.client-secret: '{os.environ['GOOGLE_CLIENT_SECRET']}'",
 ])
 config.write_text("\n".join(lines) + "\n")
 
