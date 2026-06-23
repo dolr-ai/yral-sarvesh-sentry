@@ -15,8 +15,9 @@ Sentry over the private `sentry-web` Swarm overlay.
 - Backups: intentionally disabled; see `RUNBOOK.md` for reconstruction
 
 `scripts/install.sh` is idempotent and wraps the upstream
-`getsentry/self-hosted` installer. Secrets are supplied from Vault by the
-install workflow and are persisted only in the untracked upstream `.env.custom`.
+`getsentry/self-hosted` installer. Secrets are supplied from this repo's
+GitHub Actions secrets by the install workflow and are persisted only in the
+untracked upstream `.env.custom`.
 
 ## Initial rollout
 
@@ -24,10 +25,10 @@ install workflow and are persisted only in the untracked upstream `.env.custom`.
 2. Create the Google OAuth web client in `yral-mobile` with origin
    `https://sentry.sarvesh.yral.com` and redirect
    `https://sentry.sarvesh.yral.com/auth/sso/`.
-3. Populate the Vault paths referenced by `.github/workflows/install.yml`.
+3. Populate the GitHub Actions secrets referenced by `.github/workflows/install.yml`.
 4. Dispatch the install workflow.
 5. Create `sarvesh@gobazzinga.io` as the local break-glass superuser, enable
    TOTP, complete the setup wizard, and configure Google Apps auth for
    `gobazzinga.io`.
 6. Create team `sarvesh-services` and project `yral-billing`, then store its
-   DSN in the billing Vault path.
+   DSN in the billing repo secret `YRAL_BILLING_SENTRY_DSN`.

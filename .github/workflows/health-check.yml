@@ -112,8 +112,7 @@ jobs:
   # count sustained. Normal operation post-2026-04-22-tuning sits under 4.
   # A single sustained threshold breach emails whoever watches this repo.
   #
-  # Uses the same HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY secret
-  # the backup workflow uses — same CI key, same access scope.
+  # Uses the same MACHINE_ACCESS_PRIVATE_KEY secret as the install workflow.
   # ==========================================================================
   cpu-pressure:
     name: sarvesh-3 load avg watchdog
@@ -121,7 +120,6 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
-      id-token: write
     env:
       SENTRY_HOST: ${{ secrets.SARVESH_3_HOST_IP }}
       # 5-min load avg threshold. Chosen as 1.5× core count (8 cores).
@@ -130,19 +128,10 @@ jobs:
       LOAD_THRESHOLD: '12'
 
     steps:
-      - name: Import SSH key from Vault
-        uses: hashicorp/vault-action@v3
-        with:
-          url: https://vault.yral.com
-          method: jwt
-          role: yral-sarvesh-sentry-role
-          jwtGithubAudience: https://github.com/dolr-ai
-          secrets: |
-            secret/data/yral-sarvesh-sentry/MACHINE_ACCESS_PRIVATE_KEY value | MACHINE_ACCESS_PRIVATE_KEY ;
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ env.MACHINE_ACCESS_PRIVATE_KEY }}" > ~/.ssh/sarvesh_ci_key
+          echo "${{ secrets.MACHINE_ACCESS_PRIVATE_KEY }}" > ~/.ssh/sarvesh_ci_key
           chmod 600 ~/.ssh/sarvesh_ci_key
           ssh-keyscan -H "$SENTRY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
