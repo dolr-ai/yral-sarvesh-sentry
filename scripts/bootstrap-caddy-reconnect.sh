@@ -6,8 +6,8 @@
 # WHAT THIS SCRIPT DOES (one-time setup, run from Sarvesh's Mac):
 #
 # For each host in the list (sarvesh-1 + sarvesh-2):
-#   1. scp caddy-reconnect.sh → /home/deploy/caddy-reconnect.sh
-#   2. Install an `@reboot` entry in the deploy user's own crontab that
+#   1. scp caddy-reconnect.sh → /home/yral-deploy/caddy-reconnect.sh
+#   2. Install an `@reboot` entry in the yral-deploy user's own crontab that
 #      runs caddy-reconnect.sh on every boot. (Via crontab, not systemd,
 #      because deploy doesn't have passwordless sudo on these hosts.)
 #   3. Run caddy-reconnect.sh once to reconcile current state.
@@ -15,7 +15,7 @@
 # WHY CRON NOT SYSTEMD:
 #
 # Installing a system-wide systemd unit under /etc/systemd/system/
-# requires root access. The deploy user on sarvesh-1/sarvesh-2 does NOT
+# requires root access. The yral-deploy user on sarvesh-1/sarvesh-2 does NOT
 # have passwordless sudo (only Saikat holds the sudo password). An
 # earlier version of this script tried sudo and locked Sarvesh out of
 # running the bootstrap at all.
@@ -24,7 +24,7 @@
 # commands at boot under the user's own identity, with no elevated
 # privileges needed. cron is installed by default on Ubuntu 24.04.
 # caddy-reconnect.sh itself runs `docker network connect` which needs
-# access to the Docker socket; the deploy user is already in the
+# access to the Docker socket; the yral-deploy user is already in the
 # `docker` group (since that's how services deploy), so that works.
 #
 # Limitation: cron @reboot fires when the `cron` service starts, which
@@ -45,7 +45,7 @@
 #
 # SAFETY:
 #
-# - No sudo. No root. Operates entirely within the deploy user's scope.
+# - No sudo. No root. Operates entirely within the yral-deploy user's scope.
 # - Idempotent: scp overwrites the same path, crontab installation checks
 #   for an existing entry and avoids duplicates.
 # - `set -e` aborts on first error, so a failure on sarvesh-1 does NOT
@@ -64,8 +64,8 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 #   2. If host IPs change, SSH should be resolved via ~/.ssh/config, not
 #      the repo.
 HOSTS=(
-  "deploy@88.99.58.111"   # sarvesh-1
-  "deploy@136.243.153.19"    # sarvesh-2
+  "yral-deploy@88.99.58.111"   # sarvesh-1
+  "yral-deploy@136.243.153.19"    # sarvesh-2
 )
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/sarvesh-hetzner-ci-key}"
@@ -82,8 +82,8 @@ CRON_MARKER="# yral-sarvesh-sentry: re-attach caddy to sentry-web overlay on boo
 # The actual crontab line. A 30-second sleep before calling the script is
 # belt-and-braces on top of the script's own internal wait loop: @reboot
 # jobs can fire quite early in boot. Output is appended to a log file the
-# deploy user can tail: `tail -f /home/deploy/caddy-reconnect.log`.
-CRON_LINE="@reboot sleep 30 && /home/deploy/caddy-reconnect.sh >> /home/deploy/caddy-reconnect.log 2>&1"
+# yral-deploy user can tail: `tail -f /home/yral-deploy/caddy-reconnect.log`.
+CRON_LINE="@reboot sleep 30 && /home/yral-deploy/caddy-reconnect.sh >> /home/yral-deploy/caddy-reconnect.log 2>&1"
 
 # Preflight on the operator's laptop.
 if [[ ! -f "$LOCAL_SCRIPT" ]]; then
@@ -106,11 +106,11 @@ for host in "${HOSTS[@]}"; do
   echo "  Host: $host"
   echo "────────────────────────────────────────────────────────────────"
 
-  # Step 1 — copy the reconnect script to the deploy user's home.
-  echo "  [1/4] scp caddy-reconnect.sh → /home/deploy/"
-  scp "${SSH_OPTS[@]}" "$LOCAL_SCRIPT" "${host}:/home/deploy/caddy-reconnect.sh"
+  # Step 1 — copy the reconnect script to the yral-deploy user's home.
+  echo "  [1/4] scp caddy-reconnect.sh → /home/yral-deploy/"
+  scp "${SSH_OPTS[@]}" "$LOCAL_SCRIPT" "${host}:/home/yral-deploy/caddy-reconnect.sh"
   # Make sure it's executable — scp preserves mode but defense-in-depth.
-  ssh "${SSH_OPTS[@]}" "$host" "chmod +x /home/deploy/caddy-reconnect.sh"
+  ssh "${SSH_OPTS[@]}" "$host" "chmod +x /home/yral-deploy/caddy-reconnect.sh"
 
   # Step 2 — idempotently install the crontab entry.
   # Reads current crontab (ignoring exit code 1 from `crontab -l` when the
@@ -142,7 +142,7 @@ REMOTE_BOOTSTRAP
   # the next reboot. Idempotent: no-op if caddy is already attached.
   echo "  [3/4] running caddy-reconnect.sh once to reconcile current state"
   # shellcheck disable=SC2029
-  ssh "${SSH_OPTS[@]}" "$host" "/home/deploy/caddy-reconnect.sh"
+  ssh "${SSH_OPTS[@]}" "$host" "/home/yral-deploy/caddy-reconnect.sh"
 
   # Step 4 — verify the crontab entry is there and caddy IS attached
   # to sentry-web. Print both so a failure is visible immediately.
@@ -163,6 +163,6 @@ echo "DONE. Both hosts are now configured to re-attach Caddy to"
 echo "sentry-web automatically on boot, via cron @reboot."
 echo ""
 echo "To verify on a future boot: SSH in and run 'crontab -l'"
-echo "Runtime logs: tail -f /home/deploy/caddy-reconnect.log"
-echo "To manually re-run: /home/deploy/caddy-reconnect.sh (on the host)"
+echo "Runtime logs: tail -f /home/yral-deploy/caddy-reconnect.log"
+echo "To manually re-run: /home/yral-deploy/caddy-reconnect.sh (on the host)"
 echo "================================================================"

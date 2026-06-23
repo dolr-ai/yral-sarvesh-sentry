@@ -151,7 +151,7 @@ jobs:
           set -euo pipefail
           # /proc/loadavg format: "1min 5min 15min runnable/total lastpid"
           # Column 2 is the 5-min load avg — the one we care about.
-          LOAD5=$(ssh -o BatchMode=yes -i ~/.ssh/sarvesh_ci_key "deploy@${SENTRY_HOST}" "awk '{print \$2}' /proc/loadavg")
+          LOAD5=$(ssh -o BatchMode=yes -i ~/.ssh/sarvesh_ci_key "yral-deploy@${SENTRY_HOST}" "awk '{print \$2}' /proc/loadavg")
           echo "sarvesh-3 5-min load avg: $LOAD5 (threshold: $LOAD_THRESHOLD)"
 
           # bash doesn't compare floats natively; pipe through awk.

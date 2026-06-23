@@ -5,7 +5,7 @@
 #
 # WHAT THIS SCRIPT DOES, IN NUMBERED STEPS:
 #
-#   1. Sanity-check we're running on sarvesh-3 as the deploy user.
+#   1. Sanity-check we're running on sarvesh-3 as the yral-deploy user.
 #   2. Load our project.config (SENTRY_VERSION, paths, etc.).
 #   3. Clone `getsentry/self-hosted` at the pinned tag into
 #      ${SENTRY_UPSTREAM_DIR} (default /opt/sentry-upstream) — or fast-forward
@@ -27,8 +27,8 @@
 #
 # HOW TO USE (first install):
 #
-#   On sarvesh-3, logged in as `deploy`:
-#     cd /home/deploy/yral-sarvesh-sentry
+#   On sarvesh-3, logged in as `yral-deploy`:
+#     cd /home/yral-deploy/yral-sarvesh-sentry
 #     export GOOGLE_CLIENT_ID="<from-GitHub-secret>"
 #     export GOOGLE_CLIENT_SECRET="<from-GitHub-secret>"
 #     bash scripts/install.sh
@@ -97,7 +97,7 @@ if [[ ! -d "${SENTRY_UPSTREAM_DIR}/.git" ]]; then
   echo "==> Cloning getsentry/self-hosted to ${SENTRY_UPSTREAM_DIR} at tag ${SENTRY_VERSION}"
   # --depth 1 keeps the clone small; we don't need upstream history on sarvesh-3.
   # --branch accepts a tag (it's a "ref").
-  # No sudo: SENTRY_UPSTREAM_DIR is under the deploy user's home, so we
+  # No sudo: SENTRY_UPSTREAM_DIR is under the yral-deploy user's home, so we
   # own it directly. See project.config for the rationale.
   mkdir -p "${SENTRY_UPSTREAM_DIR}"
   git clone --depth 1 --branch "${SENTRY_VERSION}" \
@@ -381,7 +381,7 @@ for i in 1 2 3 4 5 6; do
     echo ""
     echo "  - If you suspect Caddy has been restarted and sentry.sarvesh.yral.com"
     echo "    is returning 502, on the affected host run:"
-    echo "      /home/deploy/caddy-reconnect.sh"
+    echo "      /home/yral-deploy/caddy-reconnect.sh"
     exit 0
   fi
   echo "   attempt ${i}/6: not ready yet, sleeping 20s..."

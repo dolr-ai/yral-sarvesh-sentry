@@ -26,7 +26,7 @@ When the thresholds above trip, this is the path.
    # From inside yral-sarvesh-hetzner-infra-template:
    bash scripts/add-server.sh --name sarvesh-4 --ip <NEW_IP>
    ```
-   This creates the deploy user, installs Docker, joins the Swarm as a worker, and opens the needed ports. Matches the pattern used for sarvesh-1/2/3.
+   This creates the yral-deploy user, installs Docker, joins the Swarm as a worker, and opens the needed ports. Matches the pattern used for sarvesh-1/2/3.
 2. Verify sarvesh-4 has **at least** 32 GB RAM, 500 GB disk, and is in the same Hetzner datacentre as sarvesh-3 (for low-latency rsync of volumes).
 
 **Migration steps** (end-to-end, 2–3 hour maintenance window):
@@ -47,8 +47,8 @@ When the thresholds above trip, this is the path.
 
 4. **rsync the volumes from sarvesh-3 → sarvesh-4.** This is the bulk of the wall-clock time.
    ```
-   ssh deploy@sarvesh-3 \
-     'sudo rsync -avz --compress-level=1 /var/lib/docker/volumes/sentry-* deploy@sarvesh-4:/var/lib/docker/volumes/'
+   ssh yral-deploy@sarvesh-3 \
+     'sudo rsync -avz --compress-level=1 /var/lib/docker/volumes/sentry-* yral-deploy@sarvesh-4:/var/lib/docker/volumes/'
    ```
    Expect 30–90 min depending on event-history size. Progress shows per-file.
 
@@ -57,15 +57,15 @@ When the thresholds above trip, this is the path.
    git clone https://github.com/dolr-ai/yral-sarvesh-sentry ~/yral-sarvesh-sentry
    # Copy .env.custom from sarvesh-3 (NOT re-generated — we want the same
    # system secret key so existing sessions + stored config remain valid):
-   scp deploy@sarvesh-3:/home/deploy/sentry-upstream/.env.custom \
-       deploy@sarvesh-4:/tmp/.env.custom.sarvesh3
+   scp yral-deploy@sarvesh-3:/home/yral-deploy/sentry-upstream/.env.custom \
+       yral-deploy@sarvesh-4:/tmp/.env.custom.sarvesh3
    # On sarvesh-4:
    mv /tmp/.env.custom.sarvesh3 ~/sentry-upstream/.env.custom
    ```
 
 6. **Run install.sh on sarvesh-4:**
    ```
-   ssh deploy@sarvesh-4
+   ssh yral-deploy@sarvesh-4
    cd ~/yral-sarvesh-sentry
    export GOOGLE_CLIENT_ID='...'     # value from .env.custom
    export GOOGLE_CLIENT_SECRET='...'
@@ -78,13 +78,13 @@ When the thresholds above trip, this is the path.
    # Sentry nginx's compose override already declares `sentry-web` as an
    # external network. When compose up runs on sarvesh-4, Docker auto-joins
    # the Swarm overlay. Verify:
-   ssh deploy@sarvesh-4 'docker inspect sentry-self-hosted-nginx-1 --format "{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}"'
+   ssh yral-deploy@sarvesh-4 'docker inspect sentry-self-hosted-nginx-1 --format "{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}"'
    ```
 
 8. **Flip Caddy on sarvesh-1 + sarvesh-2 from sarvesh-3 → sarvesh-4:**
    The Caddy snippets resolve `sentry-self-hosted-nginx-1` via Swarm DNS (not by host IP), so NO Caddy edit needed — the overlay automatically routes to whichever node is running the container. That's the beauty of the overlay pattern.
 
-   However, double-check attachment: `ssh deploy@sarvesh-1 'docker exec caddy wget -qO- --timeout=3 http://sentry-self-hosted-nginx-1/_health/'`.
+   However, double-check attachment: `ssh yral-deploy@sarvesh-1 'docker exec caddy wget -qO- --timeout=3 http://sentry-self-hosted-nginx-1/_health/'`.
 
 9. **Confirm from outside:** `curl https://sentry.sarvesh.yral.com/_health/` → `ok`. UI loads normally.
 

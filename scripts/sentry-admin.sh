@@ -48,7 +48,7 @@
 #
 # HOW TO USE (from your Mac via SSH):
 #
-#   ssh -i ~/.ssh/sarvesh-hetzner-ci-key deploy@<sarvesh-3-ip> \
+#   ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@<sarvesh-3-ip> \
 #       "~/yral-sarvesh-sentry/scripts/sentry-admin.sh <subcommand> [args...]"
 #
 # SAFETY:
@@ -63,7 +63,7 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # Resolve paths. This script lives in <repo>/scripts/, sentry-upstream is a
-# sibling directory of <repo> under the deploy user's home. We hard-code the
+# sibling directory of <repo> under the yral-deploy user's home. We hard-code the
 # relationship here so the script can be run from any working directory.
 # -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

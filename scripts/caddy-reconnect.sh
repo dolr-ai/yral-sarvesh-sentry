@@ -34,7 +34,7 @@
 #
 # WHERE THIS SCRIPT LIVES ON sarvesh-1 / sarvesh-2:
 #
-# `/home/deploy/caddy-reconnect.sh` — installed by
+# `/home/yral-deploy/caddy-reconnect.sh` — installed by
 # `scripts/bootstrap-caddy-reconnect.sh`. The systemd unit points to this
 # fixed path so the script has a stable home regardless of where (or
 # whether) the yral-sarvesh-sentry repo is cloned on the host.
@@ -54,7 +54,7 @@ CONTAINER="${SENTRY_CADDY_CONTAINER:-caddy}"
 # We wait up to 3 minutes (36 * 5s) for Docker's socket to be reachable,
 # the network to exist, AND the caddy container to be running. If the wait
 # times out, the preflight below will produce a clean error and cron will
-# log it to /home/deploy/caddy-reconnect.log.
+# log it to /home/yral-deploy/caddy-reconnect.log.
 # -----------------------------------------------------------------------------
 for i in $(seq 1 36); do
   if docker ps >/dev/null 2>&1 \
