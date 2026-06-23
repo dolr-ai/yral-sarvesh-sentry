@@ -42,8 +42,8 @@ jobs:
             ssh yral-deploy@$host "SENTRY_UPSTREAM_IP='${SARVESH_3_HOST_IP}' bash -s" <<'SCRIPT'
           set -euo pipefail
 
-          caddyfile=/opt/hello-world/Caddyfile
-          container=hello-world-proxy-1
+          caddyfile=/home/yral-deploy/yral-proxy/Caddyfile
+          container=yral-proxy
 
           test -w "$caddyfile"
 
@@ -51,7 +51,7 @@ jobs:
           import os
           from pathlib import Path
 
-          path = Path("/opt/hello-world/Caddyfile")
+          path = Path("/home/yral-deploy/yral-proxy/Caddyfile")
           upstream = os.environ["SENTRY_UPSTREAM_IP"]
           lines = path.read_text().splitlines()
           output = []
