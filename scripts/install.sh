@@ -85,6 +85,7 @@ docker compose --env-file .env --env-file .env.custom up -d --wait
 docker compose --env-file .env --env-file .env.custom run --rm web shell -c '
 from sentry.models.authprovider import AuthProvider
 from sentry.models.organization import Organization
+from sentry import options
 
 org = Organization.objects.get(slug="sentry")
 AuthProvider.objects.update_or_create(
@@ -96,6 +97,8 @@ AuthProvider.objects.update_or_create(
         "default_global_access": True,
     },
 )
+options.set("system.admin-email", "sarvesh@gobazzinga.io")
+options.set("sentry:version-configured", "26.6.0")
 '
 
 docker compose --env-file .env --env-file .env.custom restart web taskworker taskscheduler
