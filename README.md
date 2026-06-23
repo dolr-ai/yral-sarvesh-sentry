@@ -1,34 +1,51 @@
 # yral-sarvesh-sentry
 
-Self-hosted Sentry for Sarvesh-owned production services. The stack runs on
-`sarvesh-3`, while Caddy on all three `*.sarvesh.yral.com` origins proxies to
-Sentry over the private `sentry-web` Swarm overlay.
+Minimal self-hosted Sentry installer for Sarvesh-owned services.
 
-## Configuration
+This repo intentionally does not vendor or rewrite Sentry. It follows the
+official self-hosted flow:
 
+1. Clone `getsentry/self-hosted`.
+2. Check out a pinned release.
+3. Run upstream `./install.sh`.
+4. Apply only the small local config needed for `sentry.sarvesh.yral.com`.
+5. Start Sentry with Docker Compose.
+
+## Why Keep A Repo?
+
+A repo is not required to run self-hosted Sentry manually. It is useful here only
+because we want a repeatable GitHub Actions workflow, committed Caddy snippet,
+and one small install wrapper.
+
+## Runtime
+
+- Sentry host: `sarvesh-3`
 - Public URL: `https://sentry.sarvesh.yral.com`
-- Upstream release: `26.6.0`
-- Authentication: Google OAuth, restricted to `@gobazzinga.io`
-- Registration: disabled after first-time setup
-- Event retention: 30 days
-- Mail backend: dummy; monitoring uses the UI, GitHub watchdog and Beszel
-- Backups: intentionally disabled; see `RUNBOOK.md` for reconstruction
+- Upstream version: `26.6.0`
+- Event retention: `30` days
+- Google OAuth domain: `gobazzinga.io`
 
-`scripts/install.sh` is idempotent and wraps the upstream
-`getsentry/self-hosted` installer. Secrets are supplied from this repo's
-GitHub Actions secrets by the install workflow and are persisted only in the
-untracked upstream `.env.custom`.
+## Required Secrets
 
-## Initial rollout
+GitHub Actions secrets in this repo:
 
-1. Run the host preflight and confirm the gates in `PRE-FLIGHT.md`.
-2. Create the Google OAuth web client in `yral-mobile` with origin
-   `https://sentry.sarvesh.yral.com` and redirect
-   `https://sentry.sarvesh.yral.com/auth/sso/`.
-3. Populate the GitHub Actions secrets referenced by `.github/workflows/install.yml`.
-4. Dispatch the install workflow.
-5. Create `sarvesh@gobazzinga.io` as the local break-glass superuser, enable
-   TOTP, complete the setup wizard, and configure Google Apps auth for
-   `gobazzinga.io`.
-6. Create team `sarvesh-services` and project `yral-billing`, then store its
-   DSN in the billing repo secret `YRAL_BILLING_SENTRY_DSN`.
+- `SARVESH_1_HOST_IP`
+- `SARVESH_2_HOST_IP`
+- `SARVESH_3_HOST_IP`
+- `MACHINE_ACCESS_PRIVATE_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+
+The Google OAuth client should be created in project `yral-mobile` with:
+
+- Authorized origin: `https://sentry.sarvesh.yral.com`
+- Authorized redirect URI: `https://sentry.sarvesh.yral.com/auth/sso/`
+
+## Deploy
+
+Run the `Install or upgrade Sentry` workflow.
+
+After install, create the `yral-billing` project in Sentry and put its DSN in
+the `dolr-ai/yral-billing` secret:
+
+`YRAL_BILLING_SENTRY_DSN`

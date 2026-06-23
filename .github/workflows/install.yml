@@ -15,29 +15,38 @@ jobs:
       SARVESH_3_HOST_IP: ${{ secrets.SARVESH_3_HOST_IP }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.MACHINE_ACCESS_PRIVATE_KEY }}
+
       - name: Trust fleet hosts
-        run: ssh-keyscan -H "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP" >> ~/.ssh/known_hosts
-      - name: Copy configuration to sarvesh-3
+        run: |
+          ssh-keyscan -H "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP" >> ~/.ssh/known_hosts
+
+      - name: Copy installer to sarvesh-3
         run: |
           ssh yral-deploy@${SARVESH_3_HOST_IP} 'mkdir -p /home/yral-deploy/yral-sarvesh-sentry'
           rsync -az --delete --exclude .git ./ yral-deploy@${SARVESH_3_HOST_IP}:/home/yral-deploy/yral-sarvesh-sentry/
-      - name: Create private Sentry overlay
-        run: |
-          ssh yral-deploy@${SARVESH_1_HOST_IP} "docker network inspect sentry-web >/dev/null 2>&1 || docker network create --driver overlay --opt encrypted=true --attachable sentry-web"
+
       - name: Install Sentry on sarvesh-3
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           ssh yral-deploy@${SARVESH_3_HOST_IP} "cd /home/yral-deploy/yral-sarvesh-sentry && GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}' bash scripts/install.sh"
-      - name: Install persistent Caddy route on every origin
+
+      - name: Render Caddy snippet
+        run: |
+          sed "s/\${SARVESH_3_HOST_IP}/${SARVESH_3_HOST_IP}/g" caddy/sentry.caddy.template > /tmp/sentry.caddy
+
+      - name: Install Caddy route on fleet hosts
         run: |
           for host in "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP"; do
-            scp caddy/sentry.caddy yral-deploy@$host:/home/yral-deploy/caddy/conf.d/yral-sarvesh-sentry.caddy
-            ssh yral-deploy@$host "grep -qxF sentry-web /home/yral-deploy/caddy/.overlays-list || echo sentry-web >> /home/yral-deploy/caddy/.overlays-list; /home/yral-deploy/caddy/render-caddy-compose.sh; docker exec caddy caddy validate --config /etc/caddy/Caddyfile; docker exec caddy caddy reload --config /etc/caddy/Caddyfile --force"
+            ssh yral-deploy@$host 'mkdir -p /home/yral-deploy/caddy/conf.d'
+            scp /tmp/sentry.caddy yral-deploy@$host:/home/yral-deploy/caddy/conf.d/yral-sarvesh-sentry.caddy
+            ssh yral-deploy@$host '/home/yral-deploy/caddy/render-caddy-compose.sh && docker exec caddy caddy validate --config /etc/caddy/Caddyfile && docker exec caddy caddy reload --config /etc/caddy/Caddyfile --force'
           done
+
       - name: Verify public health
         run: curl --fail --retry 12 --retry-delay 10 https://sentry.sarvesh.yral.com/_health/
