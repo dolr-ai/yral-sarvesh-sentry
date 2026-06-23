@@ -81,4 +81,22 @@ PY
 
 docker compose --env-file .env --env-file .env.custom up -d --wait
 
+docker compose --env-file .env --env-file .env.custom run --rm web shell -c '
+from sentry.models.authprovider import AuthProvider
+from sentry.models.organization import Organization
+
+org = Organization.objects.get(slug="sentry")
+AuthProvider.objects.update_or_create(
+    organization_id=org.id,
+    provider="google",
+    defaults={
+        "config": {"domains": ["gobazzinga.io"]},
+        "default_role": 50,
+        "default_global_access": True,
+    },
+)
+'
+
+docker compose --env-file .env --env-file .env.custom restart web taskworker taskscheduler
+
 curl --fail --retry 12 --retry-delay 10 http://127.0.0.1:9000/_health/
