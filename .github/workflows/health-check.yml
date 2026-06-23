@@ -123,7 +123,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      SENTRY_HOST: 138.201.57.116
+      SENTRY_HOST: ${{ secrets.SARVESH_3_HOST_IP }}
       # 5-min load avg threshold. Chosen as 1.5× core count (8 cores).
       # Anything sustained above this means CPU is saturated longer than
       # bursty tasks should take.

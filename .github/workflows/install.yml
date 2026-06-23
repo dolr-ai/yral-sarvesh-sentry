@@ -10,6 +10,10 @@ permissions:
 jobs:
   install:
     runs-on: ubuntu-latest
+    env:
+      SARVESH_1_HOST_IP: ${{ secrets.SARVESH_1_HOST_IP }}
+      SARVESH_2_HOST_IP: ${{ secrets.SARVESH_2_HOST_IP }}
+      SARVESH_3_HOST_IP: ${{ secrets.SARVESH_3_HOST_IP }}
     steps:
       - uses: actions/checkout@v4
       - name: Import secrets from Vault
@@ -27,23 +31,23 @@ jobs:
         with:
           ssh-private-key: ${{ env.MACHINE_ACCESS_PRIVATE_KEY }}
       - name: Trust fleet hosts
-        run: ssh-keyscan -H 88.99.58.111 136.243.153.19 138.201.57.116 >> ~/.ssh/known_hosts
+        run: ssh-keyscan -H "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP" >> ~/.ssh/known_hosts
       - name: Copy configuration to sarvesh-3
         run: |
-          ssh yral-deploy@138.201.57.116 'mkdir -p /home/yral-deploy/yral-sarvesh-sentry'
-          rsync -az --delete --exclude .git ./ yral-deploy@138.201.57.116:/home/yral-deploy/yral-sarvesh-sentry/
+          ssh yral-deploy@${SARVESH_3_HOST_IP} 'mkdir -p /home/yral-deploy/yral-sarvesh-sentry'
+          rsync -az --delete --exclude .git ./ yral-deploy@${SARVESH_3_HOST_IP}:/home/yral-deploy/yral-sarvesh-sentry/
       - name: Create private Sentry overlay
         run: |
-          ssh yral-deploy@88.99.58.111 "docker network inspect sentry-web >/dev/null 2>&1 || docker network create --driver overlay --opt encrypted=true --attachable sentry-web"
+          ssh yral-deploy@${SARVESH_1_HOST_IP} "docker network inspect sentry-web >/dev/null 2>&1 || docker network create --driver overlay --opt encrypted=true --attachable sentry-web"
       - name: Install Sentry on sarvesh-3
         env:
           GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
         run: |
-          ssh yral-deploy@138.201.57.116 "cd /home/yral-deploy/yral-sarvesh-sentry && GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}' bash scripts/install.sh"
+          ssh yral-deploy@${SARVESH_3_HOST_IP} "cd /home/yral-deploy/yral-sarvesh-sentry && GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}' bash scripts/install.sh"
       - name: Install persistent Caddy route on every origin
         run: |
-          for host in 88.99.58.111 136.243.153.19 138.201.57.116; do
+          for host in "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP"; do
             scp caddy/sentry.caddy yral-deploy@$host:/home/yral-deploy/caddy/conf.d/yral-sarvesh-sentry.caddy
             ssh yral-deploy@$host "grep -qxF sentry-web /home/yral-deploy/caddy/.overlays-list || echo sentry-web >> /home/yral-deploy/caddy/.overlays-list; /home/yral-deploy/caddy/render-caddy-compose.sh; docker exec caddy caddy validate --config /etc/caddy/Caddyfile; docker exec caddy caddy reload --config /etc/caddy/Caddyfile --force"
           done

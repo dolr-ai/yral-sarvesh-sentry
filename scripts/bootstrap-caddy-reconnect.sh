@@ -61,11 +61,13 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # the infra-template uses, but hard-coded here because:
 #   1. yral-sarvesh-sentry's cluster surface is tiny (sarvesh-1 + sarvesh-2 for
 #      Caddy; sarvesh-3 already handled by install.sh).
-#   2. If host IPs change, SSH should be resolved via ~/.ssh/config, not
-#      the repo.
+#   2. Host IPs are supplied through environment variables, not committed.
+: "${SARVESH_1_HOST_IP:?SARVESH_1_HOST_IP is required}"
+: "${SARVESH_2_HOST_IP:?SARVESH_2_HOST_IP is required}"
+
 HOSTS=(
-  "yral-deploy@88.99.58.111"   # sarvesh-1
-  "yral-deploy@136.243.153.19"    # sarvesh-2
+  "yral-deploy@${SARVESH_1_HOST_IP}"   # sarvesh-1
+  "yral-deploy@${SARVESH_2_HOST_IP}"   # sarvesh-2
 )
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/sarvesh-hetzner-ci-key}"

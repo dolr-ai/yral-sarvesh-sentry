@@ -18,9 +18,9 @@ Step-by-step playbooks for common incidents on the self-hosted Sentry instance. 
 
 **Host quick-connect:**
 ```bash
-ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@138.201.57.116   # sarvesh-3 (where Sentry lives)
-ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@88.99.58.111   # sarvesh-1 (Caddy, Swarm manager)
-ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@136.243.153.19    # sarvesh-2 (Caddy)
+ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@<SARVESH_3_HOST_IP>   # sarvesh-3 (where Sentry lives)
+ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@<SARVESH_1_HOST_IP>   # sarvesh-1 (Caddy, Swarm manager)
+ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@<SARVESH_2_HOST_IP>    # sarvesh-2 (Caddy)
 ```
 
 **One-stop admin wrapper (runs on sarvesh-3):**
@@ -45,16 +45,16 @@ ssh -i ~/.ssh/sarvesh-hetzner-ci-key yral-deploy@136.243.153.19    # sarvesh-2 (
 curl -sS -o /dev/null -w "HTTP %{http_code} total=%{time_total}s\n" https://sentry.sarvesh.yral.com/_health/
 
 # 1b. Cloudflare → Caddy: skip Cloudflare's cache
-curl -sS --resolve sentry.sarvesh.yral.com:443:88.99.58.111 https://sentry.sarvesh.yral.com/_health/
+curl -sS --resolve sentry.sarvesh.yral.com:443:<SARVESH_1_HOST_IP> https://sentry.sarvesh.yral.com/_health/
 
 # 1c. Caddy → Sentry nginx: from inside a Caddy container
-ssh yral-deploy@88.99.58.111 'docker exec caddy wget -qO- --timeout=3 http://sentry-self-hosted-nginx-1/_health/'
+ssh yral-deploy@<SARVESH_1_HOST_IP> 'docker exec caddy wget -qO- --timeout=3 http://sentry-self-hosted-nginx-1/_health/'
 
 # 1d. Sentry nginx → Sentry web: on sarvesh-3
-ssh yral-deploy@138.201.57.116 'curl -sS http://127.0.0.1:9000/_health/'
+ssh yral-deploy@<SARVESH_3_HOST_IP> 'curl -sS http://127.0.0.1:9000/_health/'
 
 # 1e. Container status
-ssh yral-deploy@138.201.57.116 '~/yral-sarvesh-sentry/scripts/sentry-admin.sh ps' | grep -v healthy
+ssh yral-deploy@<SARVESH_3_HOST_IP> '~/yral-sarvesh-sentry/scripts/sentry-admin.sh ps' | grep -v healthy
 ```
 
 **Interpretation:**
@@ -66,7 +66,7 @@ ssh yral-deploy@138.201.57.116 '~/yral-sarvesh-sentry/scripts/sentry-admin.sh ps
 **If the Sentry stack is broken:**
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 cd ~/sentry-upstream
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh ps --format 'table {{.Service}}\t{{.Status}}'
 # Any container not "healthy"? Check its logs:
@@ -84,7 +84,7 @@ cd ~/sentry-upstream
 **Fastest recovery** (when in doubt):
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh up -d --force-recreate
 # Watch containers come healthy:
 watch -n 5 '~/yral-sarvesh-sentry/scripts/sentry-admin.sh ps | grep -cv healthy'
@@ -103,7 +103,7 @@ If Sentry doesn't come back after a `--force-recreate`, escalate to Saikat and c
 **Confirm:**
 
 ```bash
-ssh yral-deploy@88.99.58.111   # sarvesh-1 (try sarvesh-2 if symptom comes from there)
+ssh yral-deploy@<SARVESH_1_HOST_IP>   # sarvesh-1 (try sarvesh-2 if symptom comes from there)
 docker inspect caddy --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 # sentry-web should be in the list.
 ```
@@ -130,7 +130,7 @@ The script is idempotent — no-op if already attached, reattaches if not. Run o
 **Diagnose:**
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 # Is relay healthy + forwarding?
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh logs --tail=50 relay | grep -iE "error|drop|retry"
 
@@ -141,7 +141,7 @@ ssh yral-deploy@138.201.57.116
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh logs --tail=50 events-consumer | tail -20
 
 # Is the event actually in Clickhouse?
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 docker exec sentry-self-hosted-clickhouse-1 clickhouse-client --query \
   "SELECT count() FROM default.errors_local WHERE timestamp > now() - INTERVAL 10 MINUTE GROUP BY project_id"
 ```
@@ -166,7 +166,7 @@ docker exec sentry-self-hosted-clickhouse-1 clickhouse-client --query \
 **If disk is at 95 %+ and you can't wait for the nightly cleanup:**
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh exec -T web sentry cleanup --days 30
 ```
 
@@ -183,7 +183,7 @@ This runs the retention cleanup immediately. Can take 30 min on a large instance
 **Diagnose consumer lag:**
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh exec -T kafka sh -c \
   '/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups' \
   | grep -v "TOPIC\|^---" | awk '$5 > 1000'
@@ -248,7 +248,7 @@ CONFIRMED_READ_CHANGELOG=1 CONFIRMED_NO_BACKUP=1 bash scripts/upgrade.sh
 1. Google Cloud Console → APIs & Services → Credentials → click into `Sentry web client` → **Reset Client Secret**. Copy the new secret (old one is invalidated immediately).
 2. On sarvesh-3, update `.env.custom` via `install.sh` (preserves the system secret key while refreshing OAuth):
    ```
-   ssh yral-deploy@138.201.57.116
+   ssh yral-deploy@<SARVESH_3_HOST_IP>
    export GOOGLE_CLIENT_ID='<existing-id-unchanged>'
    export GOOGLE_CLIENT_SECRET='<new-secret>'
    bash ~/yral-sarvesh-sentry/scripts/install.sh
@@ -276,7 +276,7 @@ CONFIRMED_READ_CHANGELOG=1 CONFIRMED_NO_BACKUP=1 bash scripts/upgrade.sh
 **If the local password is ALSO lost:** SSH to sarvesh-3 and create a fresh superuser, which gives you a new account you can use to unlock SSO:
 
 ```bash
-ssh yral-deploy@138.201.57.116
+ssh yral-deploy@<SARVESH_3_HOST_IP>
 ~/yral-sarvesh-sentry/scripts/sentry-admin.sh run --rm -it web createuser --email breakglass@gobazzinga.io --superuser
 ```
 
