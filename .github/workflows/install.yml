@@ -36,16 +36,59 @@ jobs:
         run: |
           ssh yral-deploy@${SARVESH_3_HOST_IP} "cd /home/yral-deploy/yral-sarvesh-sentry && GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}' GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}' bash scripts/install.sh"
 
-      - name: Render Caddy snippet
-        run: |
-          sed "s/\${SARVESH_3_HOST_IP}/${SARVESH_3_HOST_IP}/g" caddy/sentry.caddy.template > /tmp/sentry.caddy
-
       - name: Install Caddy route on fleet hosts
         run: |
-          for host in "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP" "$SARVESH_3_HOST_IP"; do
-            ssh yral-deploy@$host 'mkdir -p /home/yral-deploy/caddy/conf.d'
-            scp /tmp/sentry.caddy yral-deploy@$host:/home/yral-deploy/caddy/conf.d/yral-sarvesh-sentry.caddy
-            ssh yral-deploy@$host '/home/yral-deploy/caddy/render-caddy-compose.sh && docker exec caddy caddy validate --config /etc/caddy/Caddyfile && docker exec caddy caddy reload --config /etc/caddy/Caddyfile --force'
+          for host in "$SARVESH_1_HOST_IP" "$SARVESH_2_HOST_IP"; do
+            ssh yral-deploy@$host "SENTRY_UPSTREAM_IP='${SARVESH_3_HOST_IP}' bash -s" <<'SCRIPT'
+          set -euo pipefail
+
+          caddyfile=/opt/hello-world/Caddyfile
+          container=hello-world-proxy-1
+
+          test -w "$caddyfile"
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("/opt/hello-world/Caddyfile")
+          upstream = os.environ["SENTRY_UPSTREAM_IP"]
+          lines = path.read_text().splitlines()
+          output = []
+          i = 0
+
+          while i < len(lines):
+              if lines[i].strip() == "sentry.sarvesh.yral.com:443 {":
+                  depth = 0
+                  while i < len(lines):
+                      depth += lines[i].count("{") - lines[i].count("}")
+                      i += 1
+                      if depth <= 0:
+                          break
+                  while output and output[-1].strip() == "":
+                      output.pop()
+                  continue
+
+              output.append(lines[i])
+              i += 1
+
+          while output and output[-1].strip() == "":
+              output.pop()
+
+          output.extend([
+              "",
+              "sentry.sarvesh.yral.com:443 {",
+              "    tls /etc/caddy/certs/fullchain.pem /etc/caddy/certs/privkey.pem",
+              f"    reverse_proxy {upstream}:9000",
+              "}",
+          ])
+
+          path.write_text("\n".join(output) + "\n")
+          PY
+
+          docker restart "$container"
+          docker exec "$container" caddy validate --config /etc/caddy/Caddyfile
+          SCRIPT
           done
 
       - name: Verify public health

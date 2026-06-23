@@ -14,8 +14,8 @@ official self-hosted flow:
 ## Why Keep A Repo?
 
 A repo is not required to run self-hosted Sentry manually. It is useful here only
-because we want a repeatable GitHub Actions workflow, committed Caddy snippet,
-and one small install wrapper.
+because we want a repeatable GitHub Actions workflow and one small install
+wrapper.
 
 ## Runtime
 
